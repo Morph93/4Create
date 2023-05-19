@@ -2,9 +2,6 @@ package parallel;
 
 import setupAndUtilitys.driverFactory.DriverFactory;
 import setupAndUtilitys.util.Resources;
-import setupAndUtilitys.util.jiraIntegration.JiraIntegration;
-import setupAndUtilitys.util.testRailIntegration.APIClient;
-import setupAndUtilitys.util.testRailIntegration.APIException;
 import io.cucumber.java.After;
 import io.cucumber.java.Before;
 import io.cucumber.java.Scenario;
@@ -15,12 +12,6 @@ import org.junit.rules.TestName;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
-
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.*;
-
-import static setupAndUtilitys.util.testRailIntegration.TestRailAccount.testRailApiClient;
 
 public class ApplicationHooks implements ConcurrentEventListener {
 
@@ -44,7 +35,6 @@ public class ApplicationHooks implements ConcurrentEventListener {
      * @errMsgList -> This will catch multiple errors in case we are doing softAssert.
      */
 
-    private static APIClient client = null;
     private static String runId = "1";
     private static final int FAIL_STATE = 5;
     private static final int SUCCESS_STATE = 1;
@@ -57,20 +47,6 @@ public class ApplicationHooks implements ConcurrentEventListener {
     public TestName testName = new TestName();
 
     /**
-     * @initialScenarioName -> get the name of scenario and replace all spaces
-     * @recordingName replace all special characters from initialScenarioName
-     * //ToDo -> Fix recording name so it's clearer what recording is for which scenario
-     * //ToDo -> Uncomment this to enable recorder
-     */
-//    @Before(order = 0, value = "@UI")
-//    public void getProperty(Scenario scenario) throws Exception {
-//        String initialScenarioName = scenario.getName().replaceAll(" ", "");
-//        String recordingName = initialScenarioName.replaceAll("[^a-zA-Z0-9]", "");
-//        //MyScreenRecorder.startRecording(recordingName);
-//
-//    }
-
-    /**
      * @browserName -> We're getting it from Resources Enum class.
      * @url -> We're reading from configuration property file and setting desired URL address.
      */
@@ -78,9 +54,8 @@ public class ApplicationHooks implements ConcurrentEventListener {
     public void launchBrowser() {
         DriverFactory driverFactory = new DriverFactory();
         String browserName = Resources.browser.getResource();
-        // String url = prop.getProperty("url");
         driver = driverFactory.init_driver(browserName);
-        // driver.get(url);
+        driver.get("https://rahulshettyacademy.com/seleniumPractise/#/");
     }
 
 
@@ -108,89 +83,9 @@ public class ApplicationHooks implements ConcurrentEventListener {
         scenario.attach(sourcePath, "image/png", scenarioName);
         //}
 
-        //ToDo -> Uncomment if you enable screen recorder
-//        if (!scenario.isFailed()) {
-//            MyScreenRecorder.removeRecording();
-//        }
-        // MyScreenRecorder.stopRecording();
     }
 
 
-    /**
-     * @param testCaseFinished this is a event listener which will capture when cucumber test case is finished.
-     * @finalResult -> This is extracted message that is written in assertion so that issue in JIRA has correct description.
-     * @data -> This is HashMap object created for TestRail integration
-     */
-    public void onTestFail(TestCaseFinished testCaseFinished) {
-
-        /*
-          This is how you extract steps from cucumber feature file.
-         */
-        TestCase testCase = testCaseFinished.getTestCase();
-        List<TestStep> testStep = testCase.getTestSteps();
-        List<String> listOfTestSteps = new ArrayList<>();
-        for (TestStep tc : testStep) {
-            if (tc instanceof PickleStepTestStep) {
-                PickleStepTestStep pickleStepTestStep = (PickleStepTestStep) tc;
-                String text = pickleStepTestStep.getStep().getText();
-                listOfTestSteps.add(text);
-            }
-        }
-
-        List<String> listOfStepsPreparedForAPI = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
-        for (String listOfTestStep : listOfTestSteps) {
-            listOfStepsPreparedForAPI = Collections.singletonList(sb.append("# Step ").append(": ").append(listOfTestStep).append("\n").toString());
-        }
-
-        String listOfFinalSteps = "Steps to reproduce: \n" + listOfStepsPreparedForAPI.get(0);
-
-        /*
-          End of step extraction.
-         */
-
-        String result = testCaseFinished.getResult().toString();
-        String frontCut = result.substring(result.indexOf("failed") + 8);
-        String finalResult = "* " + frontCut.substring(0, frontCut.length() - 3);
-        Map<String, Serializable> data = new HashMap<>();
-
-
-        if (testCaseFinished.getResult().toString().contains("status=FAILED")) {
-            JiraIntegration jiraIntegration = new JiraIntegration();
-            try {
-                jiraIntegration.jiraAuthentication();
-                jiraIntegration.createJiraIssue(scenarioName, finalResult, listOfFinalSteps);
-            } catch (Exception e) {
-                System.err.println("JIRA IS NOT CONNECTED PROPERLY.");
-            }
-
-            data.put("status_id", FAIL_STATE);
-            data.put("comment", FAILED_COMMENT + finalResult);
-
-        } else {
-            data.put("status_id", SUCCESS_STATE);
-            data.put("comment", SUCCESS_COMMENT);
-        }
-
-        if (caseId != null) {
-            if (!caseId.equals("")) {
-                try {
-                    if (System.getenv("runIdTestRail") != null && System.getenv("runTestRailId").equals("")) {
-                        runId = System.getenv("runIdTestRail");
-                    }
-
-                    client = testRailApiClient();
-                    client.sendPost("add_result_for_case/" + runId + "/" + caseId, data);
-
-                } catch (IOException | APIException e) {
-                    e.printStackTrace();
-                }
-            }
-        } else {
-            System.out.println("ID does not exist");
-        }
-
-    }
 
     @Override
     public void setEventPublisher(EventPublisher eventPublisher) {

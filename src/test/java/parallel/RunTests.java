@@ -34,7 +34,7 @@ import java.util.Date;
         },
         monochrome = true,
         glue = {"parallel"},
-        tags = "@DesiredTag",
+        tags = "@4Create",
         features = {"src/test/resources/parallel"}
 )
 

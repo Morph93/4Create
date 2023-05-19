@@ -26,8 +26,10 @@ public class DriverFactory {
         switch (browser) {
 
             case "chrome":
+                ChromeOptions o = new ChromeOptions();
+                o.addArguments("--remote-allow-origins=*");
                 WebDriverManager.chromedriver().setup();
-                tlDriver.set(new ChromeDriver());
+                tlDriver.set(new ChromeDriver(o));
                 break;
             case "firefox":
                 WebDriverManager.firefoxdriver().setup();
@@ -50,7 +52,6 @@ public class DriverFactory {
         getDriver().manage().deleteAllCookies();
         getDriver().manage().window().maximize();
         return getDriver();
-
     }
 
     /**

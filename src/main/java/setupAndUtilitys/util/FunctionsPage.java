@@ -1,18 +1,23 @@
 package setupAndUtilitys.util;
 
+import io.github.bonigarcia.wdm.WebDriverManager;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.openqa.selenium.*;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.io.FileHandler;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.asserts.SoftAssert;
+import setupAndUtilitys.driverFactory.DriverFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -23,10 +28,8 @@ import java.text.DateFormat;
 import java.text.Format;
 import java.text.SimpleDateFormat;
 import java.time.*;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @SuppressWarnings("unused")
 
@@ -35,14 +38,14 @@ public abstract class FunctionsPage {
     protected WebDriverWait wait;
     protected static WebDriver driver;
     private final Clock clock;
-    private final Duration timeout = Duration.ofSeconds(10);
+    private final Duration timeout = Duration.ofSeconds(15);
     private final Duration refreshPeriod = Duration.ofMillis(500);
 
     Logger logger = LoggerFactory.getLogger(FunctionsPage.class);
 
     public FunctionsPage(WebDriver driver) {
         FunctionsPage.driver = driver;
-        this.wait = new WebDriverWait(driver, Duration.ofSeconds(5));
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(15));
         this.clock = Clock.systemDefaultZone();
     }
 
@@ -176,6 +179,70 @@ public abstract class FunctionsPage {
             }
         } catch (Exception e) {
             Assert.fail("Element " + elementName + " with locator: " + locator + "is not present on the page.");
+        }
+    }
+
+    /**
+     * This function is used to check if given elements are PRESENT, DISPLAYED and if their
+     * translation is as expected on the given page.
+     *
+     * @param mapOfPageElements Providing HashMap of all elements that should be present on the given page in String,LocatorAndTranslation format.
+     * @param softAssert        Providing SoftAssert object so that all elements can be checked before throwing any exception.
+     */
+    public void checkIfPageContainsAllElementsWithTranslation(HashMap<String, LocatorAndTranslation> mapOfPageElements, SoftAssert softAssert) {
+        if (mapOfPageElements.size() != 0) {
+            checkIfEachElementIsPresentAndDisplayedAndCheckItsTranslation(mapOfPageElements, softAssert);
+            softAssert.assertAll();
+        }
+    }
+
+    private void checkIfEachElementIsPresentAndDisplayedAndCheckItsTranslation(HashMap<String, LocatorAndTranslation> mapOfPageElements, SoftAssert softAssert) {
+        for (Map.Entry<String, LocatorAndTranslation> item : mapOfPageElements.entrySet()) {
+            String translation = null;
+            try {
+                translation = item.getValue().getText();
+            } catch (Exception ignored) {
+            }
+            if (translation != null && !translation.equals("")) {
+                checkElementsPresenceVisibilityAndTranslation(item.getValue().getLocator(), translation, item.getKey(), softAssert);
+            } else {
+                checkElementsPresenceVisibilityAndTranslation(item.getValue().getLocator(), item.getKey(), softAssert);
+            }
+        }
+    }
+
+    private void checkElementsPresenceVisibilityAndTranslation(By locator, String translation, String elementName, SoftAssert softAssert) {
+
+        try {
+            WebElement element = waitIsPresent(locator);
+            ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoViewIfNeeded()", element);
+            Thread.sleep(500);
+            try {
+                waitIsDisplayed(locator);
+                if (!element.getText().equals(translation)) {
+                    softAssert.fail("Element " + elementName + " with locator: " + locator + " have wrong translation.It should be: " + translation + ", but it's: " + element.getText());
+                }
+            } catch (Exception e) {
+                softAssert.fail("Element " + elementName + " with locator: " + locator + "is not visible on the page.");
+            }
+        } catch (Exception e) {
+            softAssert.fail("Element " + elementName + " with locator: " + locator + "is not present on the page.");
+        }
+    }
+
+    private void checkElementsPresenceVisibilityAndTranslation(By locator, String elementName, SoftAssert softAssert) {
+
+        try {
+            WebElement element = waitIsPresent(locator);
+            ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoViewIfNeeded()", element);
+            Thread.sleep(500);
+            try {
+                waitIsDisplayed(locator);
+            } catch (Exception e) {
+                softAssert.fail("Element " + elementName + " with locator: " + locator + "is not visible on the page.");
+            }
+        } catch (Exception e) {
+            softAssert.fail("Element " + elementName + " with locator: " + locator + "is not present on the page.");
         }
     }
 
@@ -492,10 +559,14 @@ public abstract class FunctionsPage {
         }
     }
 
-    protected static class LocatorAndText {
-        public LocatorAndText(By locator, String text) {
+    protected static class LocatorAndTranslation {
+        public LocatorAndTranslation(By locator, String text) {
             this.locator = locator;
             this.text = text;
+        }
+
+        public LocatorAndTranslation(By locator) {
+            this.locator = locator;
         }
 
         By locator;
@@ -518,32 +589,32 @@ public abstract class FunctionsPage {
         }
     }
 
-    protected void checkMultipleTexts(Map<String, LocatorAndText> mapOfElements, SoftAssert softAssert) {
-        for (Map.Entry<String, LocatorAndText> item : mapOfElements.entrySet()) {
-            LocatorAndText locatorAndText = item.getValue();
+    protected void checkMultipleTexts(Map<String, LocatorAndTranslation> mapOfElements, SoftAssert softAssert) {
+        for (Map.Entry<String, LocatorAndTranslation> item : mapOfElements.entrySet()) {
+            LocatorAndTranslation locatorAndTranslation = item.getValue();
             WebElement element;
 
             try {
-                element = waitIsPresent(locatorAndText.getLocator());
-                waitIsDisplayed(locatorAndText.getLocator());
-                waitIsClickable(locatorAndText.getLocator());
+                element = waitIsPresent(locatorAndTranslation.getLocator());
+                waitIsDisplayed(locatorAndTranslation.getLocator());
+                waitIsClickable(locatorAndTranslation.getLocator());
 
                 if (item.getKey().equals("urlInputField")) { //Za URL polje tekst mora da se izvuce preko atributa.
-                    String actualText = waitIsPresent(locatorAndText.getLocator()).getAttribute("value");
-                    if (!actualText.equals(locatorAndText.getText())) {
-                        softAssert.fail("Element: urlInputField actually have text [ " + actualText + " ] but it should have text [ " + locatorAndText.getText() + " ]");
+                    String actualText = waitIsPresent(locatorAndTranslation.getLocator()).getAttribute("value");
+                    if (!actualText.equals(locatorAndTranslation.getText())) {
+                        softAssert.fail("Element: urlInputField actually have text [ " + actualText + " ] but it should have text [ " + locatorAndTranslation.getText() + " ]");
                     }
-                } else if (!element.getText().equals(locatorAndText.getText())) {
-                    softAssert.fail(item.getKey() + " element text doesn't match the expected text. Text is: " + element.getText() + ", but it should be: " + locatorAndText.getText());
+                } else if (!element.getText().equals(locatorAndTranslation.getText())) {
+                    softAssert.fail(item.getKey() + " element text doesn't match the expected text. Text is: " + element.getText() + ", but it should be: " + locatorAndTranslation.getText());
                 }
             } catch (NoSuchElementException | TimeoutException e) {
                 softAssert.fail(item.getKey() + " element is not present.");
             } catch (StaleElementReferenceException s) {
-                element = waitIsPresent(locatorAndText.getLocator());
-                waitIsDisplayed(locatorAndText.getLocator());
-                waitIsClickable(locatorAndText.getLocator());
-                if (!element.getText().equals(locatorAndText.getText())) {
-                    softAssert.fail(item.getKey() + " element text doesn't match the expected text. Text is: " + element.getText() + ", but it should be: " + locatorAndText.getText());
+                element = waitIsPresent(locatorAndTranslation.getLocator());
+                waitIsDisplayed(locatorAndTranslation.getLocator());
+                waitIsClickable(locatorAndTranslation.getLocator());
+                if (!element.getText().equals(locatorAndTranslation.getText())) {
+                    softAssert.fail(item.getKey() + " element text doesn't match the expected text. Text is: " + element.getText() + ", but it should be: " + locatorAndTranslation.getText());
                 }
             }
 
@@ -551,17 +622,17 @@ public abstract class FunctionsPage {
         softAssert.assertAll();
     }
 
-    protected void checkMultipleTextsForInputFields(Map<String, LocatorAndText> mapOfElements, SoftAssert softAssert) {
-        for (Map.Entry<String, LocatorAndText> item : mapOfElements.entrySet()) {
-            LocatorAndText locatorAndText = item.getValue();
+    protected void checkMultipleTextsForInputFields(Map<String, LocatorAndTranslation> mapOfElements, SoftAssert softAssert) {
+        for (Map.Entry<String, LocatorAndTranslation> item : mapOfElements.entrySet()) {
+            LocatorAndTranslation locatorAndTranslation = item.getValue();
             WebElement element;
 
             try {
-                waitIsPresent(locatorAndText.getLocator());
-                waitIsDisplayed(locatorAndText.getLocator());
-                String actualText = waitIsPresent(locatorAndText.getLocator()).getAttribute("value");
-                if (!actualText.equals(locatorAndText.getText())) {
-                    softAssert.fail("Element: urlInputField actually have text [ " + actualText + " ] but it should have text [ " + locatorAndText.getText() + " ]");
+                waitIsPresent(locatorAndTranslation.getLocator());
+                waitIsDisplayed(locatorAndTranslation.getLocator());
+                String actualText = waitIsPresent(locatorAndTranslation.getLocator()).getAttribute("value");
+                if (!actualText.equals(locatorAndTranslation.getText())) {
+                    softAssert.fail("Element: urlInputField actually have text [ " + actualText + " ] but it should have text [ " + locatorAndTranslation.getText() + " ]");
                 }
             } catch (NoSuchElementException | TimeoutException | IllegalArgumentException e) {
                 softAssert.fail(item.getKey() + " element is not present.");
@@ -571,38 +642,38 @@ public abstract class FunctionsPage {
         softAssert.assertAll();
     }
 
-    protected void enterDataIntoMultipleInputFields(Map<String, LocatorAndText> mapOfElements, SoftAssert softAssert) {
-        for (Map.Entry<String, LocatorAndText> item : mapOfElements.entrySet()) {
-            LocatorAndText locatorAndText = item.getValue();
+    protected void enterDataIntoMultipleInputFields(Map<String, LocatorAndTranslation> mapOfElements, SoftAssert softAssert) {
+        for (Map.Entry<String, LocatorAndTranslation> item : mapOfElements.entrySet()) {
+            LocatorAndTranslation locatorAndTranslation = item.getValue();
             WebElement element;
             try {
-                element = elementInteractionPrecondition(locatorAndText.getLocator(), item.getKey());
-                element.sendKeys(locatorAndText.getText());
+                element = elementInteractionPrecondition(locatorAndTranslation.getLocator(), item.getKey());
+                element.sendKeys(locatorAndTranslation.getText());
             } catch (NoSuchElementException | TimeoutException | ElementNotInteractableException e) {
                 softAssert.fail(item.getKey() + " element is not present.");
             } catch (StaleElementReferenceException e) {
-                element = elementInteractionPrecondition(locatorAndText.getLocator(), item.getKey());
+                element = elementInteractionPrecondition(locatorAndTranslation.getLocator(), item.getKey());
                 element.clear();
-                element.sendKeys(locatorAndText.getText());
+                element.sendKeys(locatorAndTranslation.getText());
             }
         }
         softAssert.assertAll();
     }
 
 
-    protected void enterDataInMultipleDropdowns(Map<String, LocatorAndText> mapOfElements, SoftAssert softAssert) {
-        for (Map.Entry<String, LocatorAndText> item : mapOfElements.entrySet()) {
-            LocatorAndText locatorAndText = item.getValue();
+    protected void enterDataInMultipleDropdowns(Map<String, LocatorAndTranslation> mapOfElements, SoftAssert softAssert) {
+        for (Map.Entry<String, LocatorAndTranslation> item : mapOfElements.entrySet()) {
+            LocatorAndTranslation locatorAndTranslation = item.getValue();
             WebElement element;
             try {
-                element = waitIsPresent(locatorAndText.getLocator());
-                element.sendKeys(locatorAndText.getText() + "\n");
+                element = waitIsPresent(locatorAndTranslation.getLocator());
+                element.sendKeys(locatorAndTranslation.getText() + "\n");
             } catch (NoSuchElementException | TimeoutException | ElementNotInteractableException e) {
-                softAssert.fail("Couldn't find " + item.getKey() + " with locator: " + locatorAndText.getLocator());
+                softAssert.fail("Couldn't find " + item.getKey() + " with locator: " + locatorAndTranslation.getLocator());
             } catch (StaleElementReferenceException e) {
-                element = waitIsPresent(locatorAndText.getLocator());
+                element = waitIsPresent(locatorAndTranslation.getLocator());
                 element.clear();
-                element.sendKeys(locatorAndText.getText() + "\n");
+                element.sendKeys(locatorAndTranslation.getText() + "\n");
             }
         }
         softAssert.assertAll();
@@ -665,4 +736,95 @@ public abstract class FunctionsPage {
     public static DevTools getDevTools() {
         return ((ChromeDriver) driver).getDevTools();
     }
+
+    /**
+     * This will filter out the pairs of hashMap by filtering the keys by given parameter
+     * ,and it will return new hashMap.
+     *
+     * @param map        you want to filter
+     * @param filterText parameter you wish to filter by
+     * @return value is new HashMap with String and LocatorAndTranslation values.
+     */
+    protected HashMap<String, LocatorAndTranslation> filterKeysOfMapWithText(HashMap<String, LocatorAndTranslation> map, String filterText) {
+
+        return (HashMap<String, LocatorAndTranslation>) map.entrySet().stream()
+                .filter(e -> e.getValue().getText().contains(filterText))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+
+    /**
+     * This function will return the value of the given cookie.
+     *
+     * @param cookieName name of which value you wish to get.
+     * @return type is String,and it will return value of the given cookie.
+     */
+    public String getCookieValue(String cookieName) {
+        Cookie cookie = driver.manage().getCookieNamed(cookieName);
+        return cookie.getValue();
+    }
+
+    protected String manipulateElementXpath(By xpath) {
+        return String.valueOf(xpath).replace("By.xpath: ", "");
+    }
+
+    protected void openInNewTab(String url) {
+        ((JavascriptExecutor) driver).executeScript("window.open('" + url + "','_blank');");
+    }
+
+    protected void scrollToElement(WebElement element) {
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoViewIfNeeded()", element);
+    }
+
+    public void takeElementScreenshot(WebElement element, String elementName) {
+        File source = element.getScreenshotAs(OutputType.FILE);
+        File dest = new File(System.getProperty("user.dir") + "/screenshots/" + elementName + generateRandomNumeric(15) + ".png");
+
+        try {
+            FileHandler.copy(source, dest);
+        } catch (IOException exception) {
+            exception.printStackTrace();
+        }
+    }
+
+    public void switchTabs(int desiredTab) {
+        ArrayList<String> tabs = new ArrayList<>(driver.getWindowHandles());
+        driver.switchTo().window(tabs.get(desiredTab));
+    }
+
+    public String getPageTitle() {
+        return driver.getTitle();
+    }
+
+    protected void dragAndDrop(WebElement sourceElement, WebElement destinationElement) {
+        Actions action = new Actions(driver);
+        action.dragAndDrop(sourceElement, destinationElement).build().perform();
+    }
+
+    protected void hoverElement(WebElement element) {
+        Actions action = new Actions(driver);
+        action.moveToElement(element).perform();
+    }
+
+    protected String getAlertMessage() {
+        return driver.switchTo().alert().getText();
+    }
+
+    protected void clickOKOnAlert() {
+        driver.switchTo().alert().accept();
+    }
+
+    protected void closeAllTabs(){
+        Set<String> windowHandles = driver.getWindowHandles();
+        for (String handle : windowHandles) {
+            driver.switchTo().window(handle);
+            driver.close();
+        }
+    }
+
+    public static void openBrowserAgainAndGoToSpecificPage(String page){
+        new DriverFactory().init_driver("chrome");
+        DriverFactory.getDriver().get(page);
+    }
+
 }

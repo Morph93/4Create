@@ -1,5 +1,17 @@
 # FRAMEWORK STRUCTURE!
 
+## Welcome to My Project!
+
+**Important Note: Unauthorized Copying of Code**
+
+All code in this repository is the intellectual property of the author Filip Gajic. Copying, reproducing, or distributing the code without explicit permission is strictly prohibited. This includes but is not limited to copying snippets, modules, or entire files.
+
+Please respect the author's rights and refrain from using this code without proper authorization.
+
+If you are interested in utilizing or collaborating on this project, please contact me at [f.gajic93@gmail.com].
+
+Thank you for your understanding and cooperation!
+
 ## First separation:
 
 * main
